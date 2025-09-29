@@ -281,7 +281,7 @@ const maxWithdrawAmount = computed(() => {
 	const methodMax = interval?.standard
 		? interval.standard.max
 		: (interval?.fixed?.values.slice(-1)[0] ?? 0)
-	// Cap at the tax-compliant maximum
+
 	return Math.min(methodMax, maxAllowedWithdrawal.value)
 })
 
