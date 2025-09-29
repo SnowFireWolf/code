@@ -70,17 +70,15 @@
 			<div class="input-group mt-4">
 				<span
 					:class="{
-						'disabled-cursor-wrapper': userBalance.available < minWithdraw || blockedByTax,
+						'disabled-cursor-wrapper': maxAllowedWithdrawal < minWithdraw,
 					}"
 				>
 					<ButtonStyled color="brand">
 						<nuxt-link
-							:aria-disabled="
-								userBalance.available < minWithdraw || blockedByTax ? 'true' : 'false'
-							"
-							:class="{ 'disabled-link': userBalance.available < minWithdraw || blockedByTax }"
-							:disabled="!!(userBalance.available < minWithdraw || blockedByTax) || null"
-							:tabindex="userBalance.available < minWithdraw || blockedByTax ? -1 : undefined"
+							:aria-disabled="maxAllowedWithdrawal < minWithdraw ? 'true' : 'false'"
+							:class="{ 'disabled-link': maxAllowedWithdrawal < minWithdraw }"
+							:disabled="!!(maxAllowedWithdrawal < minWithdraw) || null"
+							:tabindex="maxAllowedWithdrawal < minWithdraw ? -1 : undefined"
 							to="/dashboard/revenue/withdraw"
 						>
 							<TransferIcon /> Withdraw
@@ -97,6 +95,13 @@
 			<p v-if="blockedByTax" class="text-sm font-bold text-orange">
 				You have withdrawn over $600 this year. To continue withdrawing, you must complete a tax
 				form.
+			</p>
+			<p
+				v-else-if="maxAllowedWithdrawal < userBalance.available"
+				class="text-sm font-bold text-orange"
+			>
+				You can withdraw up to {{ $formatMoney(maxAllowedWithdrawal) }} before reaching the $600 tax
+				form requirement.
 			</p>
 
 			<p class="text-sm text-secondary">
@@ -182,8 +187,25 @@ const { data: userBalance } = await useAsyncData(`payout/balance`, () =>
 
 const blockedByTax = computed(() => {
 	const status = userBalance.value?.form_completion_status ?? 'unknown'
-	const thresholdMet = (userBalance.value?.withdrawn_ytd ?? 0) >= 600
-	return thresholdMet && status !== 'complete'
+	const withdrawnYtd = userBalance.value?.withdrawn_ytd ?? 0
+	return withdrawnYtd >= 600 && status !== 'complete'
+})
+
+const maxAllowedWithdrawal = computed(() => {
+	const status = userBalance.value?.form_completion_status ?? 'unknown'
+	const withdrawnYtd = userBalance.value?.withdrawn_ytd ?? 0
+	const available = userBalance.value?.available ?? 0
+
+	if (withdrawnYtd < 600 && status !== 'complete') {
+		const remainingBeforeThreshold = 600 - withdrawnYtd
+		return Math.min(available, remainingBeforeThreshold)
+	}
+
+	if (status === 'complete') {
+		return available
+	}
+
+	return 0
 })
 
 const deadlineEnding = computed(() => {

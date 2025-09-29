@@ -92,7 +92,7 @@
 		<p>
 			You are initiating a transfer of your revenue from Modrinth's Creator Monetization Program.
 			How much of your
-			<strong>{{ $formatMoney(userBalance.available) }}</strong> balance would you like to transfer
+			<strong>{{ $formatMoney(maxAllowedWithdrawal) }}</strong> available balance would you like to
 			transfer to {{ selectedMethod.name }}?
 		</p>
 		<div class="confirmation-input">
@@ -137,6 +137,10 @@
 
 		<p v-if="blockedByTax" class="font-bold text-orange">
 			You have withdrawn over $600 this year. To continue withdrawing, you must complete a tax form.
+		</p>
+		<p v-else-if="maxAllowedWithdrawal < userBalance.available" class="font-bold text-orange">
+			You can withdraw up to {{ $formatMoney(maxAllowedWithdrawal) }} before reaching the $600 tax
+			form requirement.
 		</p>
 
 		<div class="confirm-text">
@@ -274,7 +278,11 @@ const getRangeOfMethod = (method) => {
 
 const maxWithdrawAmount = computed(() => {
 	const interval = selectedMethod.value.interval
-	return interval?.standard ? interval.standard.max : (interval?.fixed?.values.slice(-1)[0] ?? 0)
+	const methodMax = interval?.standard
+		? interval.standard.max
+		: (interval?.fixed?.values.slice(-1)[0] ?? 0)
+	// Cap at the tax-compliant maximum
+	return Math.min(methodMax, maxAllowedWithdrawal.value)
 })
 
 const minWithdrawAmount = computed(() => {
@@ -311,10 +319,10 @@ const knownErrors = computed(() => {
 	if (!parsedAmount.value && amount.value.length > 0) {
 		errors.push(`${amount.value} is not a valid amount`)
 	} else if (
-		parsedAmount.value > userBalance.value.available ||
+		parsedAmount.value > maxAllowedWithdrawal.value ||
 		parsedAmount.value > maxWithdrawAmount.value
 	) {
-		const maxAmount = Math.min(userBalance.value.available, maxWithdrawAmount.value)
+		const maxAmount = Math.min(maxAllowedWithdrawal.value, maxWithdrawAmount.value)
 		errors.push(`The amount must be no more than ${data.$formatMoney(maxAmount)}`)
 	} else if (parsedAmount.value <= fees.value || parsedAmount.value < minWithdrawAmount.value) {
 		const minAmount = Math.max(fees.value + 0.01, minWithdrawAmount.value)
@@ -330,8 +338,25 @@ const agreedTerms = ref(false)
 
 const blockedByTax = computed(() => {
 	const status = userBalance.value?.form_completion_status ?? 'unknown'
-	const thresholdMet = (userBalance.value?.withdrawn_ytd ?? 0) >= 600
-	return thresholdMet && status !== 'complete'
+	const withdrawnYtd = userBalance.value?.withdrawn_ytd ?? 0
+	return withdrawnYtd >= 600 && status !== 'complete'
+})
+
+const maxAllowedWithdrawal = computed(() => {
+	const status = userBalance.value?.form_completion_status ?? 'unknown'
+	const withdrawnYtd = userBalance.value?.withdrawn_ytd ?? 0
+	const available = userBalance.value?.available ?? 0
+
+	if (withdrawnYtd < 600 && status !== 'complete') {
+		const remainingBeforeThreshold = 600 - withdrawnYtd
+		return Math.min(available, remainingBeforeThreshold)
+	}
+
+	if (status === 'complete') {
+		return available
+	}
+
+	return 0
 })
 
 watch(country, async () => {
